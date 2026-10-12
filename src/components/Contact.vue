@@ -1,5 +1,5 @@
 <script setup>
-    import { ref } from "vue";
+    import { ref, onMounted, onBeforeMount } from "vue";
     import { Notyf } from 'notyf';
     // This is normally added in main/js but since notyf will only be used in Contact.vue, we added it here
     import 'notyf/notyf.min.css';
@@ -19,6 +19,12 @@
 
     // Async function for submitting the contact form
     const submitForm = async () => {
+
+        // Check if reCaptcha token is present, return an error if not verified
+        if(!recaptchaToken.value) {
+            notyf.error('Please verify that you are not a robot.');
+            return;
+        }
 
         // this will make the button disabled while running the function
         isLoading.value = true;
@@ -54,8 +60,66 @@
             console.log(e);
             isLoading.value = false;
             notyf.error("Failed to send message. Please try again.")
+        } finally {
+            resetRecaptcha();
         }
     }
+
+    const SITE_KEY = '6LdEiustAAAAAN8MGqHdKnKyazOwg0wGSQD5LWVx';  // Replace with your site key
+
+    const recaptchaContainer = ref(null);
+    const recaptchaWidgetId = ref(null);
+    const recaptchaToken = ref('');
+
+    // Callback called by reCAPTCHA when successful
+    function onRecaptchaSuccess(token) {
+      recaptchaToken.value = token;
+    }
+
+    // Callback when expired
+    function onRecaptchaExpired() {
+      recaptchaToken.value = '';
+    }
+
+    // Function to render the reCAPTCHA widget
+    function renderRecaptcha() {
+      if (!window.grecaptcha) {
+        console.error('reCAPTCHA not loaded');
+        return;
+      }
+
+      recaptchaWidgetId.value = window.grecaptcha.render(recaptchaContainer.value, {
+        sitekey: SITE_KEY,
+        size: 'normal', // or 'compact'
+        callback: onRecaptchaSuccess,
+        'expired-callback': onRecaptchaExpired,
+      });
+    }
+
+    // Function to reset reCAPTCHA 
+    function resetRecaptcha() {
+      if (recaptchaWidgetId.value !== null) {
+        window.grecaptcha.reset(recaptchaWidgetId.value);
+        recaptchaToken.value = '';
+      }
+    }
+
+    onMounted(() => {
+      // This code waits for the Google reCAPTCHA library to load, then renders the reCAPTCHA widget using onMounted hook. 
+      // The widget is rendered with grecaptcha.render(), which requires a sitekey. 
+      // Callback functions handle success and expiration events. 
+      // reCAPTCHA is reset upon form submission to clear the token.
+      const interval = setInterval(() => {
+        if (window.grecaptcha && window.grecaptcha.render) {
+          renderRecaptcha();
+          clearInterval(interval);
+        }
+      }, 100);
+
+      onBeforeUnmount(() => {
+        clearInterval(interval);
+      });
+    });
 </script>
 
 <template>
@@ -76,6 +140,10 @@
                     </div>
                     <div class="mb-3">
                         <textarea class="form-control contact-form-control" rows="6" placeholder="Message" v-model="message"></textarea>
+                    </div>
+                    <!-- recaptcha checkbox -->
+                    <div class="d-flex justify-content-end mt-2">
+                        <div ref="recaptchaContainer"></div>
                     </div>
                     <div class="form-footer">
                         <div class="social-icons">
